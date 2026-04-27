@@ -1237,7 +1237,7 @@ input, textarea { cursor: text !important; }
       </div>
     </div>
     <div class="checkout-footer" id="checkoutFooter" style="display:none">
-      <button class="btn-place-order" id="placeOrderBtn" onclick="processOrder('card')">Place Order →</button>
+      <button class="btn-place-order" id="placeOrderBtn" onclick="processOrder()">Place Order →</button>
     </div>
   </div>
 </div>
@@ -1568,6 +1568,7 @@ function renderCart() {
   }
   updateSummary();
   updateCartBadge();
+  if(typeof updateStripeAmount==='function') updateStripeAmount();
 }
 
 function updateSummary() {
@@ -1613,78 +1614,128 @@ document.addEventListener('input', (e) => {
   }
 });
 
-async function processOrder(method) {
-  if (cart.length === 0) return;
+// ─── Stripe Payment Gateway ───
+var STRIPE_KEY = 'pk_test_51TOgOsCxOzamibKRRkcz6mqqNzex8AbkSE4dJCA9cwzL3d9fCMmmyavk3sv15ms5gneiEBm84xydwk2mkyE1ndFB00rI3Q0pMx';
+var stripe, cardElement, paymentRequest;
 
-  const val = id => document.getElementById(id).value.trim();
-  const data = {
-    name: val('f_name'), email: val('f_email'), phone: val('f_phone'),
-    address: val('f_address'), city: val('f_city'), postal: val('f_postal'),
-    card_num: val('f_card_num'), card_exp: val('f_card_exp'), card_cvv: val('f_card_cvv'), card_name: val('f_card_name')
-  };
-
-  if (!data.name || !data.email || !data.phone || !data.address) {
-    alert('Please fill in all shipping details (name, email, phone, address).');
-    return;
-  }
-  if (!/^[^@]+@[^@]+\.[^@]+$/.test(data.email)) {
-    alert('Please enter a valid email address.');
-    return;
-  }
-  if (method === 'card') {
-    if (!data.card_num || data.card_num.replace(/\s/g, '').length < 13) { alert('Please enter a valid card number.'); return; }
-    if (!data.card_exp || data.card_exp.length < 5) { alert('Please enter expiry date (MM/YY).'); return; }
-    if (!data.card_cvv || data.card_cvv.length < 3) { alert('Please enter CVV.'); return; }
-  }
-
-  const subtotal = cart.reduce((s, i) => s + priceNum(i.price) * i.qty, 0);
-  const shipping = subtotal > 25 ? 0 : 3.99;
-  const total = subtotal + shipping;
-  const orderItems = cart.map(i => `${i.emoji} ${i.name} (${i.weight}) × ${i.qty} = ₹${priceNum(i.price) * i.qty}`).join('\n');
-  const cardLast4 = data.card_num ? '**** **** **** ' + data.card_num.replace(/\s/g, '').slice(-4) : 'N/A';
-
-  const payload = {
-    _subject: '🎉 New Order - Frunchys',
-    _template: 'table',
-    _captcha: 'false',
-    'Customer Name': data.name,
-    'Email': data.email,
-    'Phone': data.phone,
-    'Shipping Address': `${data.address}, ${data.city} ${data.postal}`,
-    'Payment Method': method === 'apple' ? 'Apple Pay' : 'Credit/Debit Card',
-    'Card (masked)': method === 'card' ? cardLast4 : 'N/A',
-    'Order Items': orderItems,
-    'Subtotal': '£' + subtotal.toFixed(2),
-    'Shipping': shipping === 0 ? 'FREE' : '£' + shipping.toFixed(2),
-    'TOTAL': '£' + total.toFixed(2)
-  };
-
-  const btn = document.getElementById('placeOrderBtn');
-  const origText = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = 'Processing...';
-
+function initStripe() {
   try {
-    const res = await fetch('https://formsubmit.co/ajax/frunchys.official@gmail.com', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify(payload)
+    stripe = Stripe(STRIPE_KEY);
+    var elements = stripe.elements({
+      fonts: [{ cssSrc: 'https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500' }]
     });
-    const json = await res.json().catch(() => ({}));
-    if (res.ok && (json.success === 'true' || json.success === true)) {
-      showOrderSuccess();
-      cart = [];
-      updateCartBadge();
-      setTimeout(closeCheckout, 3500);
+    cardElement = elements.create('card', {
+      style: {
+        base: { fontSize: '15px', fontFamily: "'DM Sans', sans-serif", color: '#2D2D2D', '::placeholder': { color: '#999' } },
+        invalid: { color: '#e74c3c' }
+      }
+    });
+    cardElement.mount('#stripe-card-element');
+    cardElement.on('change', function(e) {
+      document.getElementById('stripe-card-errors').textContent = e.error ? e.error.message : '';
+    });
+    paymentRequest = stripe.paymentRequest({
+      country: 'GB', currency: 'gbp',
+      total: { label: 'Frunchys Order', amount: 349 },
+      requestPayerName: true, requestPayerEmail: true
+    });
+    var prButton = elements.create('paymentRequestButton', { paymentRequest: paymentRequest });
+    paymentRequest.canMakePayment().then(function(r) { if (r) prButton.mount('#payment-request-button-container'); });
+    paymentRequest.on('paymentmethod', async function(ev) {
+      try {
+        var sub = cart.reduce(function(s,i){return s + priceNum(i.price) * i.qty;}, 0);
+        var ship = sub > 25 ? 0 : 3.99;
+        var totalPence = Math.round((sub + ship) * 100);
+        var res = await fetch('/pay', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ amount: totalPence, payment_method_id: ev.paymentMethod.id, email: ev.payerEmail || '', name: ev.payerName || '' })
+        });
+        var data = await res.json();
+        if (data.success) {
+          ev.complete('success');
+          await sendOrderEmail('Apple Pay / Google Pay', data.payment_id);
+          showOrderSuccess(); cart = []; updateCartBadge(); setTimeout(closeCheckout, 3500);
+        } else { ev.complete('fail'); alert(data.error || 'Payment failed.'); }
+      } catch(e) { ev.complete('fail'); alert('Payment failed. Please try again.'); }
+    });
+  } catch(e) { console.log('Stripe init:', e.message); }
+}
+
+function updateStripeAmount() {
+  if (!paymentRequest) return;
+  var sub = cart.reduce(function(s,i){return s + priceNum(i.price) * i.qty;}, 0);
+  var ship = sub > 25 ? 0 : 3.99;
+  try { paymentRequest.update({ total: { label: 'Frunchys Order', amount: Math.round((sub+ship)*100) } }); } catch(e) {}
+}
+
+async function processOrder() {
+  if (cart.length === 0) return;
+  var val = function(id) { return document.getElementById(id).value.trim(); };
+  var nm = val('f_name'), em = val('f_email'), ph = val('f_phone'), addr = val('f_address'), ci = val('f_city'), po = val('f_postal');
+  if (!nm || !em || !ph || !addr) { alert('Please fill in all shipping details.'); return; }
+  if (!/^[^@]+@[^@]+\.[^@]+$/.test(em)) { alert('Please enter a valid email.'); return; }
+  var btn = document.getElementById('placeOrderBtn');
+  btn.disabled = true; btn.textContent = 'Processing payment...';
+  document.getElementById('stripe-card-errors').textContent = '';
+  try {
+    // Step 1: Create payment method from card
+    var pmResult = await stripe.createPaymentMethod({ type: 'card', card: cardElement,
+      billing_details: { name: nm, email: em, phone: ph, address: { line1: addr, city: ci, postal_code: po, country: 'GB' } }
+    });
+    if (pmResult.error) { document.getElementById('stripe-card-errors').textContent = pmResult.error.message; btn.disabled = false; btn.textContent = 'Place Order'; return; }
+
+    // Step 2: Send to backend to charge the card
+    var sub = cart.reduce(function(s,i){return s + priceNum(i.price) * i.qty;}, 0);
+    var ship = sub > 25 ? 0 : 3.99;
+    var totalPence = Math.round((sub + ship) * 100);
+
+    var chargeRes = await fetch('/pay', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        amount: totalPence,
+        payment_method_id: pmResult.paymentMethod.id,
+        email: em,
+        name: nm
+      })
+    });
+    var chargeData = await chargeRes.json();
+
+    if (chargeData.success) {
+      // Step 3: Send order confirmation email
+      await sendOrderEmail('Card ending ' + pmResult.paymentMethod.card.last4, chargeData.payment_id);
+      showOrderSuccess(); cart = []; updateCartBadge(); setTimeout(closeCheckout, 3500);
     } else {
-      throw new Error(json.message || 'Submission failed');
+      document.getElementById('stripe-card-errors').textContent = chargeData.error || 'Payment failed. Please try again.';
+      btn.disabled = false; btn.textContent = 'Place Order';
     }
   } catch (e) {
-    alert('⚠️ Order could not be submitted right now. Please try again or email us directly at frunchys.official@gmail.com\n\nNote: FormSubmit requires first-time activation. Check your email for a confirmation link from FormSubmit.');
-    btn.disabled = false;
-    btn.textContent = origText;
+    document.getElementById('stripe-card-errors').textContent = 'Payment could not be processed. Please try again.';
+    btn.disabled = false; btn.textContent = 'Place Order';
   }
 }
+
+async function sendOrderEmail(payMethod, pmId) {
+  var val = function(id) { return document.getElementById(id).value.trim(); };
+  var sub = cart.reduce(function(s,i){return s + priceNum(i.price) * i.qty;}, 0);
+  var ship = sub > 25 ? 0 : 3.99;
+  var items = cart.map(function(i){return i.emoji+' '+i.name+' x'+i.qty+' = GBP '+(priceNum(i.price)*i.qty).toFixed(2);}).join('\n');
+  try {
+    await fetch('https://formsubmit.co/ajax/frunchys.official@gmail.com', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ _subject: 'New Frunchys Order', _template: 'table', _captcha: 'false',
+        'Customer': val('f_name'), 'Email': val('f_email'), 'Phone': val('f_phone'),
+        'Address': val('f_address')+', '+val('f_city')+' '+val('f_postal'),
+        'Payment': payMethod, 'Stripe ID': pmId, 'Items': items,
+        'Subtotal': 'GBP '+sub.toFixed(2), 'Shipping': ship===0?'FREE':'GBP '+ship.toFixed(2),
+        'TOTAL': 'GBP '+(sub+ship).toFixed(2)
+      })
+    });
+  } catch(e) {}
+}
+
+setTimeout(initStripe, 500);
 
 function showCartToast(name) {
   let toast = document.getElementById('cartToast');
