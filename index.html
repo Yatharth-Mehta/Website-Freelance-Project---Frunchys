@@ -1700,7 +1700,16 @@ async function processOrder() {
         name: nm
       })
     });
-    var chargeData = await chargeRes.json();
+    if (!chargeRes.ok && chargeRes.status === 404) {
+      document.getElementById('stripe-card-errors').textContent = 'Payment endpoint not found. Ensure functions/pay.js is deployed.';
+      btn.disabled = false; btn.textContent = 'Place Order'; return;
+    }
+    var chargeText = await chargeRes.text();
+    var chargeData;
+    try { chargeData = JSON.parse(chargeText); } catch(pe) {
+      document.getElementById('stripe-card-errors').textContent = 'Server returned invalid response. Check functions/pay.js deployment.';
+      btn.disabled = false; btn.textContent = 'Place Order'; return;
+    }
 
     if (chargeData.success) {
       // Step 3: Send order confirmation email
@@ -1735,7 +1744,16 @@ async function sendOrderEmail(payMethod, pmId) {
   } catch(e) {}
 }
 
-setTimeout(initStripe, 500);
+setTimeout(function() {
+  initStripe();
+  // Check if card element mounted
+  setTimeout(function() {
+    var el = document.getElementById('stripe-card-element');
+    if (el && el.children.length === 0) {
+      el.innerHTML = '<p style="color:#e74c3c;font-size:13px;padding:8px">Card form loading failed. Check internet connection and try refreshing.</p>';
+    }
+  }, 3000);
+}, 500);
 
 function showCartToast(name) {
   let toast = document.getElementById('cartToast');
