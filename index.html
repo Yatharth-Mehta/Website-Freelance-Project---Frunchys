@@ -1218,22 +1218,11 @@ input, textarea { cursor: text !important; }
           <input id="f_city" type="text" placeholder="City">
           <input id="f_postal" type="text" placeholder="Postal Code">
         </div>
-        <h3>💳 Payment Method</h3>
-        <div class="payment-tabs">
-          <button class="payment-tab active" onclick="selectPayment('card', this)">💳 Card</button>
-          <button class="payment-tab" onclick="selectPayment('apple', this)">🍏 Apple Pay</button>
-        </div>
-        <div id="paymentCard">
-          <input id="f_card_num" type="text" placeholder="Card Number (1234 5678 9012 3456)" maxlength="19">
-          <div class="grid-2">
-            <input id="f_card_exp" type="text" placeholder="MM/YY" maxlength="5">
-            <input id="f_card_cvv" type="text" placeholder="CVV" maxlength="4">
-          </div>
-          <input id="f_card_name" type="text" placeholder="Name on Card">
-        </div>
-        <div id="paymentApple" style="display:none">
-          <button class="apple-pay-btn" onclick="processOrder('apple')">🍏 Pay with Apple Pay</button>
-        </div>
+        <h3>💳 Payment</h3>
+        <div id="payment-request-button-container" style="margin-bottom:14px"></div>
+        <div id="stripe-card-element" style="padding:14px 16px;border:1px solid var(--beige-dark);border-radius:8px;background:var(--white);margin-bottom:10px;min-height:44px;transition:border-color 0.3s"></div>
+        <div id="stripe-card-errors" style="color:#e74c3c;font-size:12px;margin-bottom:10px;min-height:18px"></div>
+        <p style="font-size:11px;color:var(--text-light);text-align:center">🔒 Secured by Stripe. We never see your card details.</p>
       </div>
     </div>
     <div class="checkout-footer" id="checkoutFooter" style="display:none">
@@ -1591,28 +1580,10 @@ function closeCheckout() {
   document.body.style.overflow = '';
 }
 
-function selectPayment(type, btn) {
-  document.querySelectorAll('.payment-tab').forEach(t => t.classList.remove('active'));
-  btn.classList.add('active');
-  document.getElementById('paymentCard').style.display = type === 'card' ? '' : 'none';
-  document.getElementById('paymentApple').style.display = type === 'apple' ? '' : 'none';
-}
+
 
 // Auto-format card number
-document.addEventListener('input', (e) => {
-  if (e.target.id === 'f_card_num') {
-    let v = e.target.value.replace(/\D/g, '').slice(0, 16);
-    e.target.value = v.replace(/(\d{4})(?=\d)/g, '$1 ');
-  }
-  if (e.target.id === 'f_card_exp') {
-    let v = e.target.value.replace(/\D/g, '').slice(0, 4);
-    if (v.length >= 3) v = v.slice(0, 2) + '/' + v.slice(2);
-    e.target.value = v;
-  }
-  if (e.target.id === 'f_card_cvv') {
-    e.target.value = e.target.value.replace(/\D/g, '').slice(0, 4);
-  }
-});
+// Card formatting handled by Stripe Elements
 
 // ─── Stripe Payment Gateway ───
 var STRIPE_KEY = 'pk_live_51TOgOsCxOzamibKRLjSD06PxPPEvoCa9yxk9cfFN5w4g5PelzjoR9F2Ur5Ez9MnhWbIRdArW8pFkzinukXgCqcae00ivYHPTFS';
