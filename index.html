@@ -1233,6 +1233,7 @@ input, textarea { cursor: text !important; }
 
 <a href="https://wa.me/+447818554728?text=Hi%20Frunchys!%20I'm%20interested%20in%20your%20products." target="_blank" class="whatsapp-btn">💬</a>
 
+<script src="https://js.stripe.com/v3/"></script>
 <script>
 // ─── Product Data ───
 const PRODUCTS = [
@@ -1715,16 +1716,14 @@ async function sendOrderEmail(payMethod, pmId) {
   } catch(e) {}
 }
 
-setTimeout(function() {
-  initStripe();
-  // Check if card element mounted
-  setTimeout(function() {
-    var el = document.getElementById('stripe-card-element');
-    if (el && el.children.length === 0) {
-      el.innerHTML = '<p style="color:#e74c3c;font-size:13px;padding:8px">Card form loading failed. Check internet connection and try refreshing.</p>';
-    }
-  }, 3000);
-}, 500);
+// Robust Stripe loader
+function waitForStripe(n) {
+  if (typeof Stripe !== 'undefined') {
+    try { initStripe(); } catch(e) { document.getElementById('stripe-card-element').innerHTML='<p style="color:#e74c3c;font-size:13px;padding:12px">'+e.message+'</p>'; }
+  } else if (n > 0) { setTimeout(function(){waitForStripe(n-1);}, 1000); }
+  else { document.getElementById('stripe-card-element').innerHTML='<p style="color:#e74c3c;font-size:13px;padding:12px">Stripe could not load. Disable ad blockers and refresh.</p>'; }
+}
+window.addEventListener('load', function(){waitForStripe(15);});
 
 function showCartToast(name) {
   let toast = document.getElementById('cartToast');
