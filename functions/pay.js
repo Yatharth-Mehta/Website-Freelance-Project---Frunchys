@@ -14,7 +14,7 @@ export async function onRequest(context) {
   // YOUR STRIPE SECRET KEY
   // Get it from: https://dashboard.stripe.com/apikeys
   // ═══════════════════════════════════════════════
-  const SECRET_KEY = "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";
+  const SECRET_KEY = "sk_live_51T0gOsCx0zamibKRyW6vrJz0ZTlEyYØD1ADKUgsV2ekKqdXETPMOo95wmphmfVx1cdw6FvUWgV8cLef00Xdz8j5X00gWxz1wnp";
 
   try {
     const input = await context.request.json();
