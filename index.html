@@ -1575,7 +1575,7 @@ function renderCart() {
 
 function updateSummary() {
   const subtotal = cart.reduce((s, i) => s + priceNum(i.price) * i.qty, 0);
-  const shipping = subtotal === 0 ? 0 : (subtotal > 25 ? 0 : 3.99);
+  const shipping = subtotal === 0 ? 0 : (subtotal > 35 ? 0 : 3.99);
   const total = subtotal + shipping;
   document.getElementById('cartSubtotal').textContent = '£' + subtotal.toFixed(2);
   document.getElementById('cartShipping').textContent = shipping === 0 ? 'FREE' : '£' + shipping.toFixed(2);
@@ -1628,7 +1628,7 @@ function initStripe() {
     paymentRequest.on('paymentmethod', async function(ev) {
       try {
         var sub = cart.reduce(function(s,i){return s + priceNum(i.price) * i.qty;}, 0);
-        var ship = sub > 25 ? 0 : 3.99;
+        var ship = sub > 35 ? 0 : 3.99;
         var totalPence = Math.round((sub + ship) * 100);
         var res = await fetch('/pay', {
           method: 'POST',
@@ -1649,7 +1649,7 @@ function initStripe() {
 function updateStripeAmount() {
   if (!paymentRequest) return;
   var sub = cart.reduce(function(s,i){return s + priceNum(i.price) * i.qty;}, 0);
-  var ship = sub > 25 ? 0 : 3.99;
+  var ship = sub > 35 ? 0 : 3.99;
   try { paymentRequest.update({ total: { label: 'Frunchys Order', amount: Math.round((sub+ship)*100) } }); } catch(e) {}
 }
 
@@ -1671,7 +1671,7 @@ async function processOrder() {
 
     // Step 2: Send to backend to charge the card
     var sub = cart.reduce(function(s,i){return s + priceNum(i.price) * i.qty;}, 0);
-    var ship = sub > 25 ? 0 : 3.99;
+    var ship = sub > 35 ? 0 : 3.99;
     var totalPence = Math.round((sub + ship) * 100);
 
     var chargeRes = await fetch('/pay', {
@@ -1712,7 +1712,7 @@ async function processOrder() {
 async function sendOrderEmail(payMethod, pmId) {
   var val = function(id) { return document.getElementById(id).value.trim(); };
   var sub = cart.reduce(function(s,i){return s + priceNum(i.price) * i.qty;}, 0);
-  var ship = sub > 25 ? 0 : 3.99;
+  var ship = sub > 35 ? 0 : 3.99;
   var items = cart.map(function(i){return i.emoji+' '+i.name+' x'+i.qty+' = GBP '+(priceNum(i.price)*i.qty).toFixed(2);}).join('\n');
   try {
     await fetch('https://formsubmit.co/ajax/frunchys.official@gmail.com', {
